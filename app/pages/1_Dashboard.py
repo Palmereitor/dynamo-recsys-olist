@@ -30,7 +30,7 @@ BLUE, ACCENT = "#176B87", "#D97706"
 
 @st.cache_data(show_spinner=False)
 def business_data(signature):
-    return load_business(ROOT)
+    return load_business(ROOT, allow_download=True)
 
 
 def file_signature(paths):
@@ -53,7 +53,7 @@ def render_business():
         paths = [ROOT / "data/processed/interactions.parquet",
                  ROOT / "data/raw/olist_orders_dataset.csv",
                  ROOT / "data/raw/olist_customers_dataset.csv"]
-        with st.spinner("Cargando compras históricas…"):
+        with st.spinner("Cargando Olist… La primera apertura puede tardar alrededor de un minuto."):
             df = business_data(file_signature(paths))
     except FileNotFoundError:
         st.info("Para explorar el negocio, coloca los CSV de Olist en data/raw/ y ejecuta "
@@ -66,6 +66,8 @@ def render_business():
         st.info("La tabla de interacciones está vacía.")
         return
 
+    st.caption("Fuente: [Olist · dataset público, versión 2](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce/versions/2). "
+               "Limpieza aplicada con el pipeline del proyecto; no son datos en tiempo real.")
     first, last = df["purchase_ts"].min().date(), df["purchase_ts"].max().date()
     with st.expander("Filtros de negocio", expanded=True):
         dates = st.date_input("Periodo de compras", (first, last), min_value=first,
