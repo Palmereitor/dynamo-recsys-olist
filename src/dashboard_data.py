@@ -1,5 +1,8 @@
 """Lectura y agregaciones del dashboard, sin depender de la API ni del modelo."""
+from io import BytesIO
 from pathlib import Path
+from urllib.request import Request, urlopen
+from zipfile import BadZipFile, ZipFile
 
 import pandas as pd
 
@@ -7,9 +10,51 @@ import pandas as pd
 METRICS = ["precision@k", "recall@k", "hit_rate@k", "ndcg@k", "coverage"]
 
 
-def load_business(root: Path) -> pd.DataFrame:
+PUBLIC_DATA_URL = (
+    "https://www.kaggle.com/api/v1/datasets/download/"
+    "olistbr/brazilian-ecommerce?datasetVersionNumber=2"
+)
+
+
+def load_public_business():
+    """Descarga la versión 2 pública de Olist sin token ni archivos en Git."""
+    from src.data.make_interactions import build_interactions
+
+    files = {
+        "orders": ("olist_orders_dataset.csv", ["order_purchase_timestamp"]),
+        "items": ("olist_order_items_dataset.csv", []),
+        "customers": ("olist_customers_dataset.csv", []),
+        "products": ("olist_products_dataset.csv", []),
+        "reviews": ("olist_order_reviews_dataset.csv", ["review_answer_timestamp"]),
+        "translation": ("product_category_name_translation.csv", []),
+    }
+    try:
+        request = Request(PUBLIC_DATA_URL, headers={"User-Agent": "DYNAMO-dashboard/1.0"})
+        with urlopen(request, timeout=60) as response:
+            content = response.read(100 * 1024 * 1024 + 1)
+        if len(content) > 100 * 1024 * 1024:
+            raise ValueError("La descarga excede el tamaño esperado de Olist.")
+        with ZipFile(BytesIO(content)) as archive:
+            if any(archive.getinfo(name).file_size > 150 * 1024 * 1024
+                   for name, _ in files.values()):
+                raise ValueError("Un CSV excede el tamaño esperado de Olist.")
+            raw = {key: pd.read_csv(archive.open(name), parse_dates=dates or None)
+                   for key, (name, dates) in files.items()}
+    except (OSError, BadZipFile, KeyError) as exc:
+        raise ValueError("No se pudo descargar Olist de Kaggle. Intenta recargar en unos minutos.") from exc
+    df, _ = build_interactions(raw)
+    geography = raw["orders"][["order_id", "customer_id"]].merge(
+        raw["customers"][["customer_id", "customer_state"]],
+        on="customer_id", validate="many_to_one",
+    )
+    return df.merge(geography[["order_id", "customer_state"]], on="order_id",
+                    how="left", validate="many_to_one")
+
+
+def load_business(root: Path, allow_download=False) -> pd.DataFrame:
     """Usa el precio unitario medio del pipeline multiplicado por quantity."""
-    df = pd.read_parquet(root / "data/processed/interactions.parquet")
+    path = root / "data/processed/interactions.parquet"
+    df = load_public_business() if allow_download and not path.exists() else pd.read_parquet(path)
     required = {"order_id", "customer_unique_id", "product_id", "purchase_ts",
                 "category", "price", "quantity"}
     missing = required - set(df.columns)
@@ -21,7 +66,9 @@ def load_business(root: Path) -> pd.DataFrame:
         raise ValueError("Hay interacciones sin fecha de compra.")
     df["category"] = df["category"].fillna("unknown")
     df["sales_brl"] = df["price"] * df["quantity"]
-    df["customer_state"] = "Sin dato"
+    if "customer_state" not in df:
+        df["customer_state"] = "Sin dato"
+    df["customer_state"] = df["customer_state"].fillna("Sin dato")
 
     raw = root / "data/raw"
     orders_path = raw / "olist_orders_dataset.csv"
