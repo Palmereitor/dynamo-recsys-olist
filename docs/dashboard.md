@@ -47,3 +47,20 @@ Los tests cubren cantidades, conteo único de pedidos/clientes, filtros inclusiv
 ## Compartir
 
 La entrada de despliegue independiente en Streamlit Community Cloud es `app/pages/1_Dashboard.py`. Sin datos locales, la app ofrece la comparación de modelos y explica cómo habilitar negocio. Los CSV y parquet no se suben automáticamente: para publicar también negocio, definir con el equipo una fuente de datos reproducible. No se incluyen datos ni credenciales en este cambio.
+
+
+### Despliegue público
+
+https://dynamo-olist-dashboard.streamlit.app/
+
+La instancia usa el fork `Palmereitor/dynamo-recsys-olist`, rama
+`feature/dashboard-interactivo`. Si no encuentra el parquet local, descarga
+la versión 2 del dataset público de Olist desde Kaggle, lee solamente los seis
+CSV necesarios y aplica `build_interactions`. No requiere credenciales ni
+versionar los datos. La tabla resultante se guarda en la caché de Streamlit;
+la primera apertura después de un reinicio puede tardar aproximadamente un minuto.
+Las aperturas siguientes reutilizan la caché. Si Kaggle no responde se muestra
+un error y la comparación de modelos sigue disponible.
+
+La carga local sigue siendo preferente. La red se habilita explícitamente con
+`load_business(root, allow_download=True)` solo en la página de Streamlit.
