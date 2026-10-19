@@ -1,5 +1,6 @@
 """Prueba los controles de Streamlit sin servidor HTTP ni datos crudos."""
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -7,7 +8,8 @@ testing = pytest.importorskip("streamlit.testing.v1")
 PAGE = Path(__file__).resolve().parents[1] / "app/pages/1_Dashboard.py"
 
 
-def test_model_controls_render_and_keep_intervals_at_k10():
+@patch("src.dashboard_data.urlopen", side_effect=OSError("sin red en pruebas"))
+def test_model_controls_render_and_keep_intervals_at_k10(_download):
     app = testing.AppTest.from_file(str(PAGE), default_timeout=30).run()
     assert not app.exception
     next(s for s in app.selectbox if s.label == "Top-K evaluado").select(20).run()
